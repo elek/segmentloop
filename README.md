@@ -1,3 +1,6 @@
+# Segment loop
+
+Helper to count distribution of segments in the database of [Storj](https://github.com/storj/storj) Distributed Storage Cloud
 
 Segment loop is a standalone (!) segment loop to do various calculation on segments table which are not possible with SQL.
 
