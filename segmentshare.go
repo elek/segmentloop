@@ -15,14 +15,14 @@ type SegmentShare struct {
 	Nodes map[storj.NodeID]bool
 
 	//number of pieces per segment  --> number of segments with this number of pieces remaining after Nodes are down
-	RemainingPieces map[int]int
+	RemainingPieces map[string]int
 	Name            string
 }
 
 func NewSegmentShare() *SegmentShare {
 	return &SegmentShare{
 		Nodes:           make(map[storj.NodeID]bool),
-		RemainingPieces: make(map[int]int),
+		RemainingPieces: make(map[string]int),
 	}
 }
 
@@ -66,7 +66,7 @@ func (s *SegmentShare) RemoteSegment(ctx context.Context, segment *segmentloop.S
 			remaining--
 		}
 	}
-	s.RemainingPieces[remaining]++
+	s.RemainingPieces[fmt.Sprintf("%d,%d,%d", len(segment.Pieces), len(segment.Pieces)-remaining, remaining)]++
 
 	return nil
 }
@@ -78,25 +78,11 @@ func (s *SegmentShare) InlineSegment(ctx context.Context, segment *segmentloop.S
 var _ segmentloop.Observer = &SegmentShare{}
 
 func (s *SegmentShare) PrintResults() {
-	max := 0
-	min := 200 //110 should be the max in reality
-	for k := range s.RemainingPieces {
-		if k > max {
-			max = k
-		}
-		if k < min {
-			min = k
-		}
-	}
 
-	fmt.Printf("Nodes from %s (%d)\n", s.Name, len(s.Nodes))
+	fmt.Printf("all pieces,pieces on %s,remaining,# of such segments", s.Name)
+	for k, v := range s.RemainingPieces {
+		fmt.Printf("%s,%d\n", k, v)
+	}
 	fmt.Println()
-	fmt.Println("remaining pieces,number of segments")
-	if max < min {
-		fmt.Errorf("max < min: %d < %d", max, min)
-		return
-	}
-	for i := min; i <= max; i++ {
-		fmt.Printf("%d,%d\n", i, s.RemainingPieces[i])
-	}
+	fmt.Println()
 }
