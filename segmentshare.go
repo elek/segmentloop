@@ -12,15 +12,17 @@ import (
 )
 
 type SegmentShare struct {
-	Nodes            map[storj.NodeID]bool
-	SegmentOwnership map[int]int
-	Name             string
+	Nodes map[storj.NodeID]bool
+
+	//number of pieces per segment  --> number of segments with this number of pieces remaining after Nodes are down
+	RemainingPieces map[int]int
+	Name            string
 }
 
 func NewSegmentShare() *SegmentShare {
 	return &SegmentShare{
-		Nodes:            make(map[storj.NodeID]bool),
-		SegmentOwnership: make(map[int]int),
+		Nodes:           make(map[storj.NodeID]bool),
+		RemainingPieces: make(map[int]int),
 	}
 }
 
@@ -58,15 +60,14 @@ func (s *SegmentShare) LoopStarted(ctx context.Context, info segmentloop.LoopInf
 }
 
 func (s *SegmentShare) RemoteSegment(ctx context.Context, segment *segmentloop.Segment) error {
-	share := 0
+	remaining := len(segment.Pieces)
 	for _, piece := range segment.Pieces {
 		if _, found := s.Nodes[piece.StorageNode]; found {
-			share++
+			remaining--
 		}
 	}
-	if share > 0 {
-		s.SegmentOwnership[share]++
-	}
+	s.RemainingPieces[remaining]++
+
 	return nil
 }
 
@@ -78,16 +79,24 @@ var _ segmentloop.Observer = &SegmentShare{}
 
 func (s *SegmentShare) PrintResults() {
 	max := 0
-	for k := range s.SegmentOwnership {
+	min := 200 //110 should be the max in reality
+	for k := range s.RemainingPieces {
 		if k > max {
 			max = k
+		}
+		if k < min {
+			min = k
 		}
 	}
 
 	fmt.Printf("Nodes from %s (%d)\n", s.Name, len(s.Nodes))
 	fmt.Println()
-	fmt.Println("owned pieces,number of segments")
-	for i := 0; i <= max; i++ {
-		fmt.Printf("%d,%d\n", i, s.SegmentOwnership[i])
+	fmt.Println("remaining pieces,number of segments")
+	if max < min {
+		fmt.Errorf("max < min: %d < %d", max, min)
+		return
+	}
+	for i := min; i <= max; i++ {
+		fmt.Printf("%d,%d\n", i, s.RemainingPieces[i])
 	}
 }
