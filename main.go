@@ -6,6 +6,7 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/zeebo/errs/v2"
 	"go.uber.org/zap"
+	"io/ioutil"
 	"os"
 	"storj.io/private/process"
 	"storj.io/storj/satellite/metabase"
@@ -98,7 +99,9 @@ func run(connection string, i int64) error {
 	fmt.Printf("Total bytes: %d\n", counter.TotalRemoteBytes)
 	fmt.Println()
 	for _, o := range observers {
-		o.PrintResults()
+		res := o.GetResults()
+		fmt.Println(res)
+		_ = ioutil.WriteFile(o.Name+".out", []byte(res), 0644)
 	}
 
 	return nil

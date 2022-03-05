@@ -12,8 +12,8 @@ import (
 )
 
 type SegmentShare struct {
-	Nodes map[storj.NodeID]bool
-
+	Nodes       map[storj.NodeID]bool
+	ActiveNodes map[storj.NodeID]bool
 	//number of pieces per segment  --> number of segments with this number of pieces remaining after Nodes are down
 	RemainingPieces map[string]int
 	Name            string
@@ -26,12 +26,25 @@ func NewSegmentShare() *SegmentShare {
 	}
 }
 
-func SegmentShareFromFile(file string) (*SegmentShare, error) {
-	s := NewSegmentShare()
+func SegmentShareFromFile(file string) (s *SegmentShare, err error) {
+	s = NewSegmentShare()
 	s.Name = file
+	s.Nodes, err = readNodes(file)
+	if err != nil {
+		return s, err
+	}
+	s.ActiveNodes, err = readNodes("active.txt")
+	if err != nil {
+		return s, err
+	}
+	return s, err
+}
+
+func readNodes(file string) (map[storj.NodeID]bool, error) {
+	result := make(map[storj.NodeID]bool)
 	nodes, err := ioutil.ReadFile(file)
 	if err != nil {
-		return nil, errs.Wrap(err)
+		return result, err
 	}
 	for _, line := range strings.Split(string(nodes), "\n") {
 		line = strings.TrimSpace(line)
@@ -43,16 +56,16 @@ func SegmentShareFromFile(file string) (*SegmentShare, error) {
 
 		nodeHex, err := hex.DecodeString(line)
 		if err != nil {
-			return nil, errs.Wrap(err)
+			return result, errs.Wrap(err)
 		}
 
 		n, err := storj.NodeIDFromBytes(nodeHex)
 		if err != nil {
-			return nil, err
+			return result, errs.Wrap(err)
 		}
-		s.Nodes[n] = true
+		result[n] = true
 	}
-	return s, nil
+	return result, nil
 }
 
 func (s *SegmentShare) LoopStarted(ctx context.Context, info segmentloop.LoopInfo) error {
@@ -60,13 +73,21 @@ func (s *SegmentShare) LoopStarted(ctx context.Context, info segmentloop.LoopInf
 }
 
 func (s *SegmentShare) RemoteSegment(ctx context.Context, segment *segmentloop.Segment) error {
-	remaining := len(segment.Pieces)
+	usablePieces := len(segment.Pieces)
+	activePieces := len(segment.Pieces)
+
 	for _, piece := range segment.Pieces {
-		if _, found := s.Nodes[piece.StorageNode]; found {
-			remaining--
+		_, active := s.ActiveNodes[piece.StorageNode]
+		_, inGroup := s.Nodes[piece.StorageNode]
+		if !active {
+			activePieces--
+			usablePieces--
+		} else if inGroup {
+			usablePieces--
 		}
+
 	}
-	s.RemainingPieces[fmt.Sprintf("%d,%d,%d", len(segment.Pieces), len(segment.Pieces)-remaining, remaining)]++
+	s.RemainingPieces[fmt.Sprintf("%d,%d,%d", len(segment.Pieces), activePieces, usablePieces)]++
 
 	return nil
 }
@@ -77,12 +98,11 @@ func (s *SegmentShare) InlineSegment(ctx context.Context, segment *segmentloop.S
 
 var _ segmentloop.Observer = &SegmentShare{}
 
-func (s *SegmentShare) PrintResults() {
-
-	fmt.Printf("all pieces,pieces on %s,remaining,# of such segments", s.Name)
+func (s *SegmentShare) GetResults() string {
+	out := strings.Builder{}
+	out.WriteString(fmt.Sprintf("all,active,remaining,segments\n", s.Name))
 	for k, v := range s.RemainingPieces {
-		fmt.Printf("%s,%d\n", k, v)
+		out.WriteString(fmt.Sprintf("%s,%d\n", k, v))
 	}
-	fmt.Println()
-	fmt.Println()
+	return out.String()
 }
